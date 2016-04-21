@@ -1,32 +1,61 @@
-#!/usr/bin/perl
-
 use strict;
 use warnings;
 use Getopt::Long;
+use PDL;
 
-my $firstX = "1";
-my $lastX = "1";
+our $firstX = 0;
+our $lastX = 0;
 GetOptions("firstX:i", => \$firstX,
 	   "lastX:i", => \$lastX);
 
-my $configCount = 1;
-open XDM, ">XDATCAR_merged";
+our $configCount = 1;
+our $header = "";
+open my $xdmf, '>', "XDATCAR_merged";
 
-for(my $i = $firstX; $i<=$lastX; $i++){
-    my $sX = sprintf("%02i", $i);
-    open XDAT, "<XDATCAR_${sX}" or die "failed to open XDATCAR_${sX} $| \n"; 
-    if($i != $firstX) { # eat header for later XDATCAR
-	for(my $j = 0; $j < 7; $j++){
-	    my $line = <XDAT>;
-	    print $line;
+print "Merging XDATCAR: ";
+
+if($firstX != 0) {
+    for(my $i = $firstX; $i<=$lastX; $i++){
+	my $sX = sprintf("%02i", $i);
+	print "XDATCAR_${sX} ";
+	read_write($xdmf, "XDATCAR_${sX}");
+    }
+}
+
+
+my @slist = sort {($a =~ /([\d\.]+)\/XDATCAR/)[0] <=> ($b =~ /([\d\.]+)\/XDATCAR/)[0]} @ARGV;
+
+foreach my $xdatFile (@slist) {
+    print "$xdatFile ";
+    read_write($xdmf, $xdatFile);
+}
+print "\n";
+
+close $xdmf;
+
+# just to avoid code duplication
+sub read_write {
+    my $xdmFile = shift(@_);
+    my $xdatFile = shift(@_);
+    open my $xdat, '<', $xdatFile or die "failed to open $xdatFile $| \n"; 
+    my $tempHeader = $header;
+    for(my $j = 0; $j < 7; $j++){
+	$_ = <$xdat>;
+	if($header eq "" ) { # eat header for later $xdatCAR
+	    print $xdmFile $_;
+	    $tempHeader .= $_;
 	}
     }
-    while(<XDAT>) {
-	if($_=~/(Direct configuration=\s+)(\d+)/) {
-	    print XDM "${1}${configCount}\n";
+    $header = $tempHeader;
+
+    while(<$xdat>) {
+	if($_=~/(Direct|Cartesian)(.*\s*=\s+)(\d+)/) {
+	    print $xdmFile "${1}${2}${configCount}\n";
 	    $configCount++;
 	    next;
 	}
-	print XDM $_;
+	print $xdmFile $_;
     }
+    close $xdatFile;
 }
+
